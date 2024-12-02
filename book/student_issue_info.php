@@ -1,7 +1,14 @@
 <?php
+    include "connection.php"; // Database connection
+    include "student_navbar.php"; // Navbar for student (navigation)
 
-	include "connection.php";
-    include "student_navbar.php";
+    session_start();
+
+    // Ensure the student is logged in
+    if (!isset($_SESSION['login_student_username'])) {
+        echo "<script>alert('You must log in first.'); window.location='login.php';</script>";
+        exit;
+    }
 ?>
 
 <!DOCTYPE html>
@@ -11,9 +18,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Panel</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" integrity="sha512-HK5fgLBL+xu6dm/Ii3z4xhlSUyZgTT9tuc/hSrtw6uzJOvgRr2a9jyxxT1ely+B+xFAmJKVSTbpM/CuL7qxO8w==" crossorigin="anonymous" />
-    <link rel="preconnect" href="https://fonts.gstatic.com">
-    <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=<?php echo time(); ?>">
 </head>
@@ -21,160 +26,102 @@
     <div class="request-table">
         <div class="request-container book-container">
             <h2 class="request-title student-info-title" style="padding-top: 50px;">List of Issued Books</h2>
+
             <?php
-        $e=0;
-	    if(isset($_SESSION['login_student_username']))
-		{
+            // Get the student ID from the session variable
+            $student_username = $_SESSION['login_student_username'];
+            $student_query = mysqli_query($db, "SELECT studentid FROM student WHERE student_username='$student_username'");
+            $student_row = mysqli_fetch_assoc($student_query);
+            $studentid = $student_row['studentid'];
 
-			$q1=mysqli_query($db,"SELECT studentid from student where studentid='$_SESSION[studentid]';");
-		    $row=mysqli_fetch_assoc($q1);
+            // Check for overdue books and calculate fines
+            $fine_query = mysqli_query($db, "SELECT SUM(fine) as total_fine FROM issueinfo WHERE studentid='$studentid' AND approve='EXPIRED'");
+            $fine_row = mysqli_fetch_assoc($fine_query);
+            $total_fine = $fine_row['total_fine'] ? $fine_row['total_fine'] : 0;
 
-		    $var='<p style="color:yellow; background-color:red;">EXPIRED</p>';
-			$q=mysqli_query($db,"SELECT books.bookid,books.bookname,books.ISBN,books.bookpic,price,issueinfo.issuedate,issueinfo.returndate,
-			issueinfo.approve,fine,authors.authorname,category.categoryname from  `issueinfo` join `books` on issueinfo.bookid=books.bookid join `student`on student.studentid=issueinfo.studentid join authors on authors.authorid=books.authorid join category on category.categoryid=books.categoryid where student.studentid ='$_SESSION[studentid]' and (issueinfo.approve='yes' or issueinfo.approve='$var') ORDER BY `issueinfo`.`returndate` ASC; ");
-			if(mysqli_num_rows($q)==0)
-			{
-				
-				echo "There's no issued books";
-				
-			}
-			else
-			{
-				$var='<p style="color:yellow; background-color:red;">EXPIRED</p>';
-				$row1=mysqli_query($db,"SELECT sum(fine),student.studentid,FullName from issueinfo join student on student.studentid=issueinfo.studentid where student.studentid ='$_SESSION[studentid]' and issueinfo.approve='$var';");
-                $res1=mysqli_fetch_assoc($row1);
-                if(mysqli_num_rows($row1)!=0)
-                {
-                    ?>
-                    <h2 style="padding-left: 1050px;">Your Fine is: &nbsp;<?php echo $res1['sum(fine)'] . " RS.";?></h2>
-                    <?php
-                    
-                }
-                
-				echo "<table class='rtable'>";
-                echo "<tr style='background-color: teal;'>";
-                //Table header
-                // echo "<th>"; echo "Book ID"; echo "</th>";
-                echo "<th>"; echo "Books"; echo "</th>";
-                echo "<th>"; echo "Author Name"; echo "</th>";
-                echo "<th>"; echo "Category Name"; echo "</th>";
-                echo "<th>"; echo "ISBN"; echo "</th>";
-                echo "<th>"; echo "Issue Date"; echo "</th>";
-                echo "<th>"; echo "Return Date"; echo "</th>";
-                echo "<th>"; echo "Approve Status"; echo "</th>";
-                echo "<th>"; echo "Fine"; echo "</th>";
-                echo "</tr>";
+            // Query to get issued books
+            $issued_books_query = mysqli_query($db, "
+                SELECT books.bookid, books.bookname, books.ISBN, books.bookpic, books.price, issueinfo.issuedate, 
+                       issueinfo.returndate, issueinfo.approve, issueinfo.fine, authors.authorname, category.categoryname
+                FROM issueinfo
+                JOIN books ON issueinfo.bookid = books.bookid
+                JOIN authors ON authors.authorid = books.authorid
+                JOIN category ON category.categoryid = books.categoryid
+                WHERE issueinfo.studentid = '$studentid' AND (issueinfo.approve = 'yes' OR issueinfo.approve = 'EXPIRED')
+                ORDER BY issueinfo.returndate ASC
+            ");
 
-                while($row=mysqli_fetch_assoc($q))
-                {
-                    $d = strtotime($row['returndate']);
-                    $c=strtotime(date("Y-m-d"));
-                    $diff = $c - $d;
-                    // if($d > $row['returndate'])
-                    // {
-                    //     $e=$e+1;
-                    //     $var='<p style="color:yellow; background-color:red;">EXPIRED</p>';
-                    //     mysqli_query($db,"UPDATE issueinfo SET approve='$var',fine=10 where `returndate`='$row[returndate]' and approve='yes' limit $e;");
-                    // }
-                    if($diff>0){
-                        $day = floor($diff/(60*60*24));
-                        $e=$e+1;
-                        $var='<p style="color:yellow; background-color:red;">EXPIRED</p>';
-                        $fine = $day*10;
-                        mysqli_query($db,"UPDATE issueinfo SET approve='$var',fine=$fine where `returndate`='$row[returndate]' and approve='yes' limit $e;");
+            // Display total fine
+            if ($total_fine > 0) {
+                echo "<h2 style='padding-left: 1050px;'>Your Fine: &nbsp;$total_fine RS</h2>";
+            }
+
+            // Display issued books table
+            if (mysqli_num_rows($issued_books_query) == 0) {
+                echo "You have no issued books.";
+            } else {
+                echo "<table class='rtable'>";
+                echo "<tr style='background-color: teal;'>
+                        <th>Books</th>
+                        <th>Author Name</th>
+                        <th>Category</th>
+                        <th>ISBN</th>
+                        <th>Issue Date</th>
+                        <th>Return Date</th>
+                        <th>Approval Status</th>
+                        <th>Fine</th>
+                        <th>Action</th>
+                    </tr>";
+
+                while ($book_row = mysqli_fetch_assoc($issued_books_query)) {
+                    $return_date = strtotime($book_row['returndate']);
+                    $current_date = strtotime(date("Y-m-d"));
+                    $overdue_days = ($current_date - $return_date) / (60 * 60 * 24); // Calculate overdue days
+
+                    // Update expired books with fine if overdue
+                    if ($overdue_days > 0 && $book_row['approve'] == 'yes') {
+                        $fine_amount = $overdue_days * 10; // Fine calculation
+                        mysqli_query($db, "UPDATE issueinfo SET approve='EXPIRED', fine='$fine_amount' WHERE bookid='{$book_row['bookid']}' AND studentid='$studentid'");
                     }
-                    // $t=mysqli_query($db,"SELECT * FROM timer where stdid='$_SESSION[studentid]' and bid='$row[bookid]';");
-                    // $res = mysqli_fetch_assoc($t);
-                    // $countDownDate = strtotime($res['date']);
-                    // $now = strtotime(date("Y-m-d H:i:s"));
-                    // $diff = $now-$countDownDate;
-                    
-                    // if($diff>0){
-                    //     $day = floor($diff/(1000*60*60*24));
-                    //     echo $day;
-                    //     $e=$e+1;
-                    //     $var='<p style="color:yellow; background-color:red;">EXPIRED</p>';
-                    //     $fine = $day*10;
-                    //     mysqli_query($db,"UPDATE issueinfo SET approve='$var',fine=$fine where `returndate`='$row[returndate]' and approve='yes' limit $e;");
-                        
-                    // }
-                    
+
+                    // Display each book in a row
                     echo "<tr>";
-                    // echo "<td>"; echo $row['bookid']; echo "</td>";
-                    echo "<td>
-                    <div class='table-info'>
-                        <img src='images/".$row['bookpic']."'>
-                        <div>
-                            <p>";echo $row['bookname'];echo"</p>
-                            <small>Price: ";echo $row['price'];echo" RS.</small><br>";?>
-                        </div>
-                    </div>
-                    </td><?php
-                    echo "<td>"; echo $row['authorname']; echo "</td>";
-                    echo "<td>"; echo $row['categoryname']; echo "</td>";
-                    echo "<td>"; echo $row['ISBN']; echo "</td>";
-                    echo "<td>"; echo $row['issuedate']; echo "</td>";
-                    echo "<td>"; echo $row['returndate']; echo "</td>";
-                    echo "<td>"; echo $row['approve']; echo "</td>";
-                    echo "<td>"; echo $row['fine']; echo "</td>";
+                    echo "<td><div class='table-info'><img src='images/{$book_row['bookpic']}'><div><p>{$book_row['bookname']}</p><small>Price: {$book_row['price']} RS</small></div></div></td>";
+                    echo "<td>{$book_row['authorname']}</td>";
+                    echo "<td>{$book_row['categoryname']}</td>";
+                    echo "<td>{$book_row['ISBN']}</td>";
+                    echo "<td>{$book_row['issuedate']}</td>";
+                    echo "<td>{$book_row['returndate']}</td>";
+                    echo "<td>{$book_row['approve']}</td>";
+                    echo "<td>{$book_row['fine']}</td>";
+                    echo "<td><a href='request_book.php?req={$book_row['bookid']}' onclick='return confirm(\"Are you sure you want to cancel this request?\")'>Delete</a></td>";
                     echo "</tr>";
                 }
                 echo "</table>";
             }
-        }
             ?>
+
         </div>
     </div>
-    <!-- <div class="footer">
-        <div class="footer-row">
-            <div class="footer-left">
-                <h1>Opening Hours</h1>
-                <p><i class="far fa-clock"></i>Monday to Friday - 9am to 9pm</p>
-                <p><i class="far fa-clock"></i>Saturday to Sunday - 8am to 11pm</p>
-            </div>
-            <div class="footer-right">
-                <h1>Get In Touch</h1>
-                <p>#30 abc Colony, xyz City IN<i class="fas fa-map-marker-alt"></i></p>
-                <p>example@website.com<i class="fas fa-paper-plane"></i></p>
-                <p>+8801515637957<i class="fas fa-phone-alt"></i></p>
-            </div>
-        </div>
-        <div class="social-links">
-            <i class="fab fa-facebook-f"></i>
-            <i class="fab fa-twitter"></i>
-            <i class="fab fa-instagram-square"></i>
-            <i class="fab fa-youtube"></i>
-            <p>&copy; 2024 Copyright by our team</p>
-        </div>
-    </div> -->
+
     <?php
-    if(isset($_GET['req']))
-	{
-		$id=$_GET['req'];
-		mysqli_query($db,"DELETE FROM issueinfo where bookid=$id AND studentid = '$_SESSION[studentid]';");
-        $res=mysqli_query($db,"SELECT quantity from books where bookid=$id;");
-		while($row=mysqli_fetch_assoc($res))
-		{
-			if($row['quantity']==0)
-			{
-				mysqli_query($db,"UPDATE books SET quantity=quantity+1, status='Available' where bookid=$id;");
-			}
-			else
-			{
-				mysqli_query($db,"UPDATE books SET quantity=quantity+1 where bookid=$id;");
-			}
-			
-		}
-		?>	
-		<script type="text/javascript">
-			alert("Request Deleted successfully.");
-			
-		</script>
-		<script type="text/javascript">
-			window.location="request_book.php";
-	    </script>
-		<?php
-	}
-	?>
+    // Handling book request deletion
+    if (isset($_GET['req'])) {
+        $bookid_to_delete = $_GET['req'];
+        // Delete the book request and update the book quantity
+        $delete_query = "DELETE FROM issueinfo WHERE bookid = '$bookid_to_delete' AND studentid = '$studentid'";
+        mysqli_query($db, $delete_query);
+
+        // Update book quantity
+        $book_query = "SELECT quantity FROM books WHERE bookid = '$bookid_to_delete'";
+        $book_result = mysqli_query($db, $book_query);
+        $book_row = mysqli_fetch_assoc($book_result);
+        $new_quantity = $book_row['quantity'] + 1;
+
+        mysqli_query($db, "UPDATE books SET quantity = '$new_quantity' WHERE bookid = '$bookid_to_delete'");
+
+        echo "<script>alert('Request deleted successfully.'); window.location='student_books.php';</script>";
+    }
+    ?>
 </body>
 </html>
